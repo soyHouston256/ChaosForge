@@ -7,6 +7,11 @@ REGION="${REGION:-us-central1}"
 CLUSTER="${CLUSTER:-chaosforge-lab}"
 export TF_VAR_project_id="$PROJECT_ID" TF_VAR_region="$REGION" TF_VAR_cluster_name="$CLUSTER"
 # STATE_BUCKET debe pasarse explicitamente; nunca use el estado local sin querer.
-require_bucket() { [[ -n "${STATE_BUCKET:-}" ]] || { echo 'FALTA STATE_BUCKET; primero ejecuta scripts/bootstrap-state.sh'; exit 2; }; }
-init_tf(){ require_bucket; terraform -chdir="$TF" init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=chaosforge/lab"; }
+# require_bucket() { [[ -n "${STATE_BUCKET:-}" ]] || { echo 'FALTA STATE_BUCKET; primero ejecuta scripts/bootstrap-state.sh'; exit 2; }; }
+# init_tf(){ require_bucket; terraform -chdir="$TF" init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=chaosforge/lab"; }
+# Terraform obtiene la configuración del backend desde versions.tf.
+# No se permite utilizar accidentalmente un estado local.
+init_tf() {
+  terraform -chdir="$TF" init -input=false
+}
 credentials(){ gcloud container clusters get-credentials "$CLUSTER" --project "$PROJECT_ID" --region "$REGION"; }

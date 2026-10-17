@@ -57,7 +57,6 @@ jobs:
       id-token: write
     env:
       TF_VAR_project_id: tider-ops
-      STATE_BUCKET: ${{ vars.STATE_BUCKET }}
       CLOUDSDK_CORE_PROJECT: tider-ops
     steps:
       - name: Checkout ChaosForge
@@ -83,10 +82,7 @@ jobs:
 
       - name: Terraform init and validate
         run: |
-          test -n "$STATE_BUCKET" || { echo 'STATE_BUCKET GitHub variable is missing'; exit 1; }
-          terraform -chdir=infrastructure/terraform init -input=false \
-            -backend-config="bucket=$STATE_BUCKET" \
-            -backend-config="prefix=chaosforge/lab"
+          terraform -chdir=infrastructure/terraform init -input=false
           terraform -chdir=infrastructure/terraform validate
 
       - name: Terraform plan

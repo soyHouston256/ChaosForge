@@ -1,14 +1,38 @@
+
 #!/usr/bin/env bash
+set -euo pipefail
+
 source "$(dirname "$0")/common.sh"
-# Ejecutar una sola vez desde Cloud Shell con permisos Storage Admin sobre este proyecto.
-NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-BUCKET="${STATE_BUCKET:-chaosforge-tfstate-${NUMBER}}"
-echo "Se creará el bucket gs://$BUCKET para Terraform State (facturable)."
-read -r -p 'Escribe ESTADO para continuar: ' ans
-[[ "$ans" == ESTADO ]] || exit 1
-gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1 || gcloud storage buckets create "gs://$BUCKET" --project="$PROJECT_ID" --location="$REGION" --uniform-bucket-level-access
-gcloud storage buckets update "gs://$BUCKET" --versioning
-printf '
-Usa: export STATE_BUCKET=%q
-' "$BUCKET"
-echo 'No borrar este bucket mientras exista infraestructura Terraform.'
+
+BUCKET="tider-ops-chaosforge-tfstate"
+BUCKET_URI="gs://${BUCKET}"
+
+echo "ChaosForge - Terraform State Bootstrap"
+echo "Proyecto: ${PROJECT_ID}"
+echo "Bucket: ${BUCKET_URI}"
+
+# Comprobar acceso al bucket.
+if gcloud storage buckets describe "$BUCKET_URI" \
+  --project="$PROJECT_ID" >/dev/null 2>&1; then
+
+  echo "Bucket existente. No se creará nuevamente."
+
+else
+  echo "No se pudo consultar el bucket."
+  echo "Verifica si existe y si tienes permisos."
+  echo "No se creará automáticamente para evitar duplicados."
+  exit 1
+fi
+
+# Comprobar que el versionado está habilitado.
+VERSIONING=$(gcloud storage buckets describe "$BUCKET_URI" \
+  --format="value(versioning_enabled)")
+
+if [[ "$VERSIONING" == "True" || "$VERSIONING" == "true" ]]; then
+  echo "Versionado habilitado."
+else
+  echo "ERROR: El versionado no está habilitado."
+  exit 1
+fi
+
+echo "Terraform State verificado correctamente."
