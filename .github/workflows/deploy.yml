@@ -1,38 +1,107 @@
-name: Deploy ChaosForge (manual)
+name: ChaosForge - Auth check and deployment
+
 on:
   workflow_dispatch:
     inputs:
-      approval:
-        description: 'Escribe CREAR para desplegar recursos facturables'
+      mode:
+        description: "Acción a ejecutar"
+        type: choice
+        options:
+          - verify-auth
+          - deploy
+        default: verify-auth
         required: true
+      approval:
+        description: "Para deploy escribe CREAR (no se necesita para verify-auth)"
+        type: string
+        required: false
+
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: chaosforge-gcp-lab
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    if: ${{ inputs.approval == 'CREAR' }}
+  verify-auth:
+    name: Verify GitHub OIDC authentication
     runs-on: ubuntu-latest
-    environment: gcp-lab  # Configurar revisores/aprobación en GitHub Settings antes de habilitarlo
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - uses: google-github-actions/auth@v2
+      - name: Authenticate with Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SA }}
-      - uses: google-github-actions/setup-gcloud@v2
-      - name: Terraform init, plan, apply
+          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
+          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
+          project_id: tider-ops
+          token_format: access_token
+
+      - name: Confirm temporary credential was issued
         env:
-          STATE_BUCKET: ${{ vars.STATE_BUCKET }}
-          TF_VAR_project_id: tider-ops
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
         run: |
-          test -n "$STATE_BUCKET"
-          terraform -chdir=infrastructure/terraform init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=chaosforge/lab"
-          terraform -chdir=infrastructure/terraform plan -input=false -out=lab.tfplan
-          terraform -chdir=infrastructure/terraform apply -input=false lab.tfplan
-      - name: Get GKE credentials
-        run: gcloud container clusters get-credentials chaosforge-lab --region=us-central1 --project=tider-ops
-      - name: Install gke auth plugin
-        run: gcloud components install gke-gcloud-auth-plugin --quiet || true
+          test -n "$ACCESS_TOKEN"
+          echo "OIDC authentication succeeded; temporary access token issued."
+          echo "No infrastructure created."
+
+  deploy:
+    name: Deploy infrastructure and Online Boutique
+    needs: verify-auth
+    if: ${{ inputs.mode == 'deploy' && inputs.approval == 'CREAR' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_project_id: tider-ops
+      STATE_BUCKET: ${{ vars.STATE_BUCKET }}
+      CLOUDSDK_CORE_PROJECT: tider-ops
+    steps:
+      - name: Checkout ChaosForge
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
+          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
+          project_id: tider-ops
+
+      - name: Set up gcloud (including GKE auth plugin)
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - name: Terraform format
+        run: terraform -chdir=infrastructure/terraform fmt -check
+
+      - name: Terraform init and validate
+        run: |
+          test -n "$STATE_BUCKET" || { echo 'STATE_BUCKET GitHub variable is missing'; exit 1; }
+          terraform -chdir=infrastructure/terraform init -input=false \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="prefix=chaosforge/lab"
+          terraform -chdir=infrastructure/terraform validate
+
+      - name: Terraform plan
+        run: terraform -chdir=infrastructure/terraform plan -input=false -out=lab.tfplan
+
+      - name: Terraform apply (billable)
+        run: terraform -chdir=infrastructure/terraform apply -input=false lab.tfplan
+
+      - name: Connect to GKE
+        run: |
+          gcloud container clusters get-credentials chaosforge-lab \
+            --region=us-central1 --project=tider-ops
+
       - name: Deploy Online Boutique
-        run: ./scripts/deploy-boutique.sh
+        run: bash ./scripts/deploy-boutique.sh
+
+      - name: Check deployed resources
+        run: kubectl -n boutique get pods,services
