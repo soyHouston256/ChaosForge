@@ -1,0 +1,22 @@
+name: CI validate lab
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Bash syntax
+        run: |
+          for f in scripts/*.sh; do bash -n "$f"; done
+      - name: Terraform style
+        run: terraform -chdir=infrastructure/terraform fmt -check
+      - name: Terraform validate (no backend, no cloud access)
+        run: |
+          terraform -chdir=infrastructure/terraform init -backend=false -input=false
+          terraform -chdir=infrastructure/terraform validate

@@ -1,0 +1,38 @@
+name: Deploy ChaosForge (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: 'Escribe CREAR para desplegar recursos facturables'
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    if: ${{ inputs.approval == 'CREAR' }}
+    runs-on: ubuntu-latest
+    environment: gcp-lab  # Configurar revisores/aprobación en GitHub Settings antes de habilitarlo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Terraform init, plan, apply
+        env:
+          STATE_BUCKET: ${{ vars.STATE_BUCKET }}
+          TF_VAR_project_id: tider-ops
+        run: |
+          test -n "$STATE_BUCKET"
+          terraform -chdir=infrastructure/terraform init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=chaosforge/lab"
+          terraform -chdir=infrastructure/terraform plan -input=false -out=lab.tfplan
+          terraform -chdir=infrastructure/terraform apply -input=false lab.tfplan
+      - name: Get GKE credentials
+        run: gcloud container clusters get-credentials chaosforge-lab --region=us-central1 --project=tider-ops
+      - name: Install gke auth plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet || true
+      - name: Deploy Online Boutique
+        run: ./scripts/deploy-boutique.sh
