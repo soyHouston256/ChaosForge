@@ -1,0 +1,10 @@
+{
+  "[terraform]": {
+    "editor.defaultFormatter": "HashiCorp.terraform",
+    "editor.formatOnSave": true
+  },
+  "[terraform-vars]": {
+    "editor.defaultFormatter": "HashiCorp.terraform",
+    "editor.formatOnSave": true
+  }
+}
