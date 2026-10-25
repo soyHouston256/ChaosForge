@@ -69,7 +69,7 @@ GKE Autopilot y otros recursos generan cargos. Antes de aplicar, revisar `terraf
 
 ## Administrador web
 
-El [administrador de ChaosForge](admin/README.md) permite gestionar fallos acotados desde un panel privado, con estado persistente y recuperación tras reinicios. Incluye demo local explícita, pruebas y manifiestos GKE preparados; todavía no está desplegado en el clúster.
+El [administrador de ChaosForge](admin/README.md) permite gestionar fallos acotados desde un panel privado, con estado persistente y recuperación tras reinicios. Incluye demo local explícita, pruebas y manifiestos GKE preparados; el usuario confirmó posteriormente el pipeline verde y la lectura real mediante port-forward.
 
 ```bash
 python3 admin/server.py --demo --port 8091 --data /tmp/chaosforge-admin-demo
@@ -78,3 +78,5 @@ python3 admin/server.py --demo --port 8091 --data /tmp/chaosforge-admin-demo
 Abrir http://localhost:8091. La demo no accede a GCP.
 
 El despliegue del administrador se integra en el workflow existente con el modo **`deploy-admin`** y aprobación **`ADMIN`**, sin ejecutar Terraform ni redesplegar Online Boutique. Consulta [CI/CD y prerrequisitos](admin/DEPLOYMENT.md). Todos los commits, pushes y despliegues los ejecuta el usuario.
+
+Para abrir el panel real desde este repositorio: `./scripts/abrir-panel.sh`. Mantén la terminal abierta y visita http://127.0.0.1:8092 cuando aparezca `Forwarding from`; Ctrl+C cierra el túnel privado.

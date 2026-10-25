@@ -36,7 +36,7 @@ node --check admin/static/app.js
 
 La ruta oficial es **GitHub Actions → `deploy-admin`**, con OIDC y el entorno protegido `gcp-lab`. Construye y prueba en el runner, publica en Artifact Registry y despliega por digest sin Terraform ni cambios en Online Boutique. El usuario hace todos los commits, pushes y ejecuciones.
 
-Ver [procedimiento integrado, estado de recursos y permisos pendientes](DEPLOYMENT.md). Cloud Build no es un requisito de esta ruta. El administrador sigue sin desplegarse; la integración solo fue preparada y validada localmente.
+Ver [procedimiento integrado, estado de recursos y permisos pendientes](DEPLOYMENT.md). Cloud Build no es un requisito de esta ruta. El usuario informó que el pipeline terminó en verde y que ve las tarjetas reales por port-forward. Esta confirmación procede del usuario; no se volvió a consultar GCP al preparar el script de acceso.
 
 ## Recuperación y límites operativos
 
@@ -51,3 +51,15 @@ La base no tiene purga automática; revisar capacidad y preservar evidencias ant
 17 pruebas automatizadas (14 del runtime y 3 de guardas del despliegue): exclusión mutua, commit antes de mutación, plazos, réplicas originales, reintentos, reinicio, SIGKILL del servidor y reapertura de la base, bloqueo de segunda instancia, separación de HTTP y disponibilidad, allowlist, HPA y protección Host/Origin/CSRF.
 
 Flujo de navegador probado en demo: iniciar, recargar página conservando experimento, bloquear otros objetivos, observar HTTP simulado 500, restaurar y obtener historial recuperado. Diseño comprobado a 1440 px y 390 px sin desbordamiento horizontal. JavaScript validado con `node --check`; manifiestos procesados con `kubectl create --dry-run=client --validate=false`. Esto verifica estructura de objetos, no admisión Autopilot, montaje PVC, RBAC efectivo ni conectividad real. Esas verificaciones quedan para el despliegue.
+
+## Abrir el panel real desde el Mac
+
+Con el administrador desplegado, ejecutar desde cualquier carpeta:
+
+```bash
+/Users/maxhoustonramirezmartel/code/utec/5/integrador/project/code/chaosforge/scripts/abrir-panel.sh
+```
+
+Esperar `Forwarding from`, abrir http://127.0.0.1:8092 y mantener la terminal abierta. Ctrl+C cierra el túnel. Este comando usa la sesión gcloud existente y un kubeconfig temporal; no despliega ni modifica servicios. La demo local continúa siendo un modo distinto, marcado explícitamente como simulación.
+
+El lanzador cuenta con cinco pruebas locales usando comandos simulados; verifican guardas, dirección loopback y limpieza del kubeconfig. La comprobación del puerto ocurre antes de abrir el túnel: si otro proceso ocupa el puerto después, kubectl informa el fallo y se limpia el archivo temporal.

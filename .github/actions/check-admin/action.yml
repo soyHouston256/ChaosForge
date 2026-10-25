@@ -18,6 +18,7 @@ runs:
         node --check admin/static/app.js
         bash -n scripts/deploy-admin.sh
         bash -n scripts/verify-admin.sh
+        bash -n scripts/abrir-panel.sh
     - name: Check immutable-image rendering
       shell: bash
       run: |

@@ -69,7 +69,7 @@ Durante el despliegue, no iniciar experimentos desde otra sesión. La comprobaci
    ```bash
    git add .github/workflows/ci.yml .github/workflows/deploy.yml \
      .github/actions/check-admin/action.yml .gitignore README.md admin \
-     scripts/deploy-admin.sh scripts/verify-admin.sh docs/security.md docs/architecture.md docs/README.md
+     scripts/deploy-admin.sh scripts/verify-admin.sh scripts/abrir-panel.sh docs/security.md docs/architecture.md docs/README.md
    git diff --cached
    git commit -m "Add private ChaosForge admin and GitHub Actions deployment"
    git push
@@ -79,20 +79,20 @@ Durante el despliegue, no iniciar experimentos desde otra sesión. La comprobaci
 4. Revisar el permiso de publicación y los prerrequisitos anteriores. No recrear el repositorio ni activar Cloud Build.
 5. En GitHub → **Actions → ChaosForge - Auth check and deployment → Run workflow**, seleccionar rama `main`, **mode `deploy-admin`** y **approval `ADMIN`**. Aprobar `gcp-lab` cuando GitHub lo solicite. `deploy` sigue significando infraestructura + Boutique; no elegirlo para actualizar solo el administrador.
 6. Esperar el job verde y guardar el commit/digest del resumen. Si falla después de publicar, la imagen puede existir; si falla después de aplicar, el Deployment puede haber cambiado. No hay rollback automático ni borrado del PVC. Inspeccionar el paso fallido antes de reintentar.
-7. Abrir el panel desde el equipo propio:
+7. Abrir el panel desde el Mac con un solo comando (funciona desde cualquier carpeta):
 
    ```bash
-   export KUBECONFIG=/tmp/chaosforge-admin-kubeconfig
-   gcloud container clusters get-credentials chaosforge-lab \
-     --project=tider-ops --region=us-central1
-   kubectl -n chaosforge-system port-forward --address 127.0.0.1 \
-     service/chaosforge-admin 8092:8080
+   /Users/maxhoustonramirezmartel/code/utec/5/integrador/project/code/chaosforge/scripts/abrir-panel.sh
    ```
 
-   Visitar http://localhost:8092. Confirmar la banda de datos reales. No se crea endpoint público ni acceso persistente desde el runner. La prueba inicial no incluye inyecciones.
+   Esperar `Forwarding from` y visitar http://127.0.0.1:8092. Mantener la terminal abierta; **Ctrl+C** cierra el túnel y elimina su kubeconfig temporal, sin cambiar el habitual. Usa la sesión gcloud existente; si falta login o el plugin GKE, muestra la instrucción correspondiente. Si el puerto está ocupado, informa el error sin detener procesos ajenos. El script no despliega ni inyecta fallos y no abre el panel públicamente.
+
+   El estado previo de esta guía corresponde a las últimas comprobaciones del asistente. Posteriormente el usuario informó pipeline verde y tarjetas reales mediante el túnel manual; esa comprobación del usuario no se volvió a consultar en GCP para crear este script.
 
 ## Validación local y límites
 
 Se validaron YAML con el parser local, sintaxis shell/JavaScript, renderizado por digest y 17 pruebas Python, incluidas tres que usan kubectl/curl falsos para comprobar que una lectura denegada o un experimento pendiente bloquean `apply`. En la imagen se ejecutan las 14 pruebas de runtime; las tres de scripts se omiten allí porque los scripts de despliegue no se empaquetan.
 
 No se ejecutaron Docker, GitHub Actions, publicación, despliegue ni cambios IAM/GCP para validar esta integración. El parser YAML no sustituye el validador de Actions y la comprobación local no garantiza admisión Autopilot o conectividad del runner. La ruta real será comprobada en la ejecución que dispare el usuario.
+
+El script de apertura añade 5 pruebas locales con mocks: sesión ausente, plugin ausente, puerto ocupado, túnel privado y limpieza incluso ante fallo. No llaman a GCP. Estas pruebas también se omiten dentro de la imagen, donde no se empaquetan los scripts de operación.
