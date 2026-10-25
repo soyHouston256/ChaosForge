@@ -9,10 +9,11 @@ on:
         options:
           - verify-auth
           - deploy
+          - deploy-admin
         default: verify-auth
         required: true
       approval:
-        description: "Para deploy escribe CREAR (no se necesita para verify-auth)"
+        description: "Para deploy: CREAR. Para deploy-admin: ADMIN. verify-auth no requiere texto."
         type: string
         required: false
 
@@ -101,3 +102,67 @@ jobs:
 
       - name: Check deployed resources
         run: kubectl -n boutique get pods,services
+
+  deploy-admin:
+    name: Build and deploy private ChaosForge administrator
+    needs: verify-auth
+    if: ${{ inputs.mode == 'deploy-admin' && inputs.approval == 'ADMIN' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: gcp-lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CLOUDSDK_CORE_PROJECT: tider-ops
+      IMAGE_REPOSITORY: us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required checks before publishing or deployment
+        uses: ./.github/actions/check-admin
+      - name: Build and test image on the GitHub runner (no Cloud Build)
+        run: |
+          IMAGE_TAG="$IMAGE_REPOSITORY:${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          docker build --platform linux/amd64 --tag "$IMAGE_TAG" admin
+          docker run --rm --entrypoint python \
+            --mount "type=bind,source=$PWD/admin/tests,target=/app/tests,readonly" \
+            "$IMAGE_TAG" -m unittest discover -s tests -v
+      - name: Authenticate through existing GitHub OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
+          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
+          project_id: tider-ops
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+      - name: Connect and check existing administrator is idle
+        run: |
+          gcloud container clusters get-credentials chaosforge-lab --region=us-central1 --project=tider-ops
+          EXISTING_ADMIN="$(kubectl -n chaosforge-system get deployment chaosforge-admin -o name --ignore-not-found)"
+          if [[ -n "$EXISTING_ADMIN" ]]; then
+            bash scripts/verify-admin.sh --idle-only
+          fi
+      - name: Publish tested image and resolve immutable digest
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          docker push "$IMAGE_TAG"
+          IMAGE_DIGEST="$(gcloud artifacts docker images describe "$IMAGE_TAG" --project=tider-ops --format='value(image_summary.digest)')"
+          IMAGE_REF="$IMAGE_REPOSITORY@$IMAGE_DIGEST"
+          python admin/render_manifest.py "$IMAGE_REF" > "$RUNNER_TEMP/chaosforge-admin.yaml"
+          echo "IMAGE_REF=$IMAGE_REF" >> "$GITHUB_ENV"
+      - name: Deploy only administrator resources
+        run: bash scripts/deploy-admin.sh "$IMAGE_REF"
+      - name: Verify private access, PVC, real reads and effective permissions
+        run: bash scripts/verify-admin.sh
+      - name: Record deployed revision
+        run: |
+          {
+            echo '### ChaosForge administrator'
+            echo "Commit: $GITHUB_SHA"
+            echo "Image: $IMAGE_REF"
+            echo 'Namespace: chaosforge-system; access: private port-forward.'
+            echo 'Read-only checks passed. No fault injection was performed.'
+            echo 'Open locally: kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8092:8080'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,12 @@
+*
+!Dockerfile
+!.dockerignore
+!cloudbuild.yaml
+!controller.py
+!backend.py
+!server.py
+!static/
+!static/**
+!tests/
+!tests/**
+**/__pycache__/**

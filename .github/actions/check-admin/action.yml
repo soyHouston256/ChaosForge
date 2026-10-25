@@ -1,0 +1,30 @@
+name: Validate ChaosForge administrator
+description: Offline tests shared by CI and the protected deployment job
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Controller and HTTP tests
+      shell: bash
+      run: python -m unittest discover -s admin/tests -v
+    - name: JavaScript and shell syntax
+      shell: bash
+      run: |
+        node --check admin/static/app.js
+        bash -n scripts/deploy-admin.sh
+        bash -n scripts/verify-admin.sh
+    - name: Check immutable-image rendering
+      shell: bash
+      run: |
+        python admin/render_manifest.py \
+          us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          > "$RUNNER_TEMP/admin-render-check.yaml"
+        if python admin/render_manifest.py us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin:latest; then
+          echo 'Mutable image unexpectedly accepted' >&2
+          exit 1
+        fi

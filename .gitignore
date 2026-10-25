@@ -10,3 +10,10 @@ terraform.tfvars
 vendor/
 .evidence/
 .DS_Store
+
+# Web administrator local state
+__pycache__/
+admin/data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal

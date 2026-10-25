@@ -1,0 +1,15 @@
+# Legacy standalone build configuration; NOT used by the GitHub Actions deployment.
+# Current deployment: .github/workflows/deploy.yml, mode deploy-admin.
+steps:
+  - name: python:3.12-slim
+    entrypoint: python
+    args: ['-m', 'unittest', 'discover', '-s', 'tests', '-v']
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin:$BUILD_ID', '.']
+images:
+  - 'us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin:$BUILD_ID'
+serviceAccount: projects/tider-ops/serviceAccounts/chaosforge-builder@tider-ops.iam.gserviceaccount.com
+logsBucket: gs://tider-ops-chaosforge-build/logs
+options:
+  logging: GCS_ONLY
+  requestedVerifyOption: VERIFIED

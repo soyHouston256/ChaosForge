@@ -1,0 +1,5 @@
+__pycache__
+tests
+k8s
+data
+*.sqlite3*
