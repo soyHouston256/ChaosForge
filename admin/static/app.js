@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const paths = {cart:'M2 3h3l3 12h11l3-9H6 M9 20h.01 M18 20h.01',card:'M3 5h18v14H3z M3 9h18 M6 15h4',tag:'M3 3h8l10 10-8 8L3 11z M7 7h.01',truck:'M2 5h12v12H2z M14 10h4l4 4v3h-8 M6 17a2 2 0 1 0 .01 0 M18 17a2 2 0 1 0 .01 0',coins:'M4 5c0-4 16-4 16 0s-16 4-16 0 M4 5v13c0 4 16 4 16 0V5 M4 10c0 4 16 4 16 0 M4 14c0 4 16 4 16 0',star:'m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z'};
+const paths = {web:'M3 4h18v16H3z M3 9h18',mail:'M3 5h18v14H3z M3 5l9 7 9-7',activity:'M2 12h4l3-8 6 16 3-8h4',cart:'M2 3h3l3 12h11l3-9H6 M9 20h.01 M18 20h.01',card:'M3 5h18v14H3z M3 9h18 M6 15h4',tag:'M3 3h8l10 10-8 8L3 11z M7 7h.01',truck:'M2 5h12v12H2z M14 10h4l4 4v3h-8 M6 17a2 2 0 1 0 .01 0 M18 17a2 2 0 1 0 .01 0',coins:'M4 5c0-4 16-4 16 0s-16 4-16 0 M4 5v13c0 4 16 4 16 0V5 M4 10c0 4 16 4 16 0 M4 14c0 4 16 4 16 0',star:'m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z'};
 const states = {injecting:'Preparando',active:'Fallo activo',restoring:'Restaurando',verifying:'Verificando recuperación',completed:'Recuperado',cancelled:'Cancelado'};
 let state = null, duration = 60, busy = false, connected = false, offset = 0;
 const time = stamp => new Date(stamp * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -11,12 +11,13 @@ function render() {
  if (!state) return;
  const active = state.active, locked = busy || !connected;
  $('mode').textContent = state.mode;
+ $('service-count').textContent = `${state.services.length} componentes · boutique`;
  $('restore-all').disabled = !active || locked;
  $('cards').innerHTML = state.services.map(s => {
   const affected = active?.service === s.name;
   const healthy = !s.error && s.replicas > 0 && s.ready === s.replicas;
   const status = s.error ? 'No disponible' : affected ? states[active.state] : healthy ? 'Disponible' : 'Sin disponibilidad';
-  return `<article class="card ${affected ? 'affected':''}"><div class="card-top"><div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[s.icon]}"/></svg></div><div><h3>${esc(s.label)}</h3><p>${esc(s.description)}</p></div></div><span class="status ${s.error?'unknown':affected||!healthy?'warn':''}">${esc(status)}</span><div class="card-bottom"><span>${s.error?'Estado no disponible':`${s.ready} / ${s.replicas} disponibles`}</span><button data-${affected?'restore':'start'}="${s.name}" ${locked || (!affected && (active || !healthy)) ? 'disabled':''}>${affected?'↻ Restaurar':'Provocar fallo'}</button></div>${s.error?`<p>${esc(s.error)}</p>`:''}</article>`;
+  return `<article class="card ${affected ? 'affected':''}"><div class="card-top"><div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[s.icon]}"/></svg></div><div><h3>${esc(s.label)}</h3><p>${esc(s.description)}</p><small class="service-name">${esc(s.name)}</small></div></div><span class="status ${s.error?'unknown':affected||!healthy?'warn':''}">${esc(status)}</span><div class="card-bottom"><span>${s.error?'Estado no disponible':`${s.ready} / ${s.replicas} disponibles`}</span><button data-${affected?'restore':'start'}="${s.name}" ${locked || (!affected && (active || !healthy)) ? 'disabled':''}>${affected?'↻ Restaurar':'Provocar fallo'}</button></div>${s.error?`<p>${esc(s.error)}</p>`:''}</article>`;
  }).join('');
  $('experiment').innerHTML = active ? `<h2>Caída de ${esc(label(active.service).toLowerCase())}</h2><p>${esc(states[active.state])} · Réplicas originales: ${active.original}</p>${active.issue?`<div class="issue">${esc(active.issue)}</div>`:''}` : '<h2>Listo para experimentar</h2><p>Elige una duración y pulsa «Provocar fallo» en el servicio que quieras detener.</p>';
  document.querySelectorAll('[data-duration]').forEach(b => {b.disabled = !!active || locked; b.setAttribute('aria-pressed', String(Number(b.dataset.duration) === (active?.duration || duration)));});

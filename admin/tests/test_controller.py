@@ -125,7 +125,7 @@ class ControllerTests(unittest.TestCase):
         self.assertIsNone(self.controller.active())
 
     def test_invalid_targets_durations_and_hpa(self):
-        for service, duration in [('redis-cart', 30), ('../frontend', 30), ('cartservice', True), ('cartservice', 31), ('cartservice', '30')]:
+        for service, duration in [('unknown-service', 30), ('../frontend', 30), ('cartservice', True), ('cartservice', 31), ('cartservice', '30')]:
             with self.assertRaises(Rejected):
                 self.controller.start(service, duration)
         self.backend.hpa = True
@@ -160,4 +160,14 @@ class ControllerTests(unittest.TestCase):
         k.scale('cartservice', 1, 'new-identity')
         self.assertEqual(calls[-1][1][1], {'op':'test','path':'/metadata/resourceVersion','value':'17'})
         with self.assertRaises(Rejected):
-            k.path('frontend')
+            k.path('unknown-service')
+
+    def test_all_twelve_targets_are_allowlisted(self):
+        from controller import SERVICES
+        self.assertEqual(len(SERVICES), 12)
+        k = Kubernetes.__new__(Kubernetes)
+        for name in SERVICES:
+            self.assertIn(name, k.path(name))
+        manifest = __import__('pathlib').Path(__file__).parents[1] / 'k8s/admin.yaml'
+        for name in SERVICES:
+            self.assertIn(name, manifest.read_text())

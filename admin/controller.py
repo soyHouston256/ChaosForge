@@ -6,6 +6,12 @@ import time
 import uuid
 
 SERVICES = {
+    'frontend': ('Tienda web', 'Punto de entrada; su caída impide navegar.', 'web'),
+    'redis-cart': ('Redis del carrito', 'Almacenamiento del carrito; reiniciar puede perder datos no persistidos.', 'coins'),
+    'checkoutservice': ('Checkout', 'Coordina la compra y sus dependencias.', 'cart'),
+    'emailservice': ('Correo', 'Confirmaciones de compra.', 'mail'),
+    'adservice': ('Anuncios', 'Anuncios de la tienda.', 'tag'),
+    'loadgenerator': ('Generador de tráfico', 'Detiene tráfico sintético; no implica caída de la tienda.', 'activity'),
     'cartservice': ('Carrito', 'Gestiona los carritos de compra.', 'cart'),
     'paymentservice': ('Pagos', 'Procesa los pagos de la tienda.', 'card'),
     'productcatalogservice': ('Catálogo', 'Productos y su información.', 'tag'),

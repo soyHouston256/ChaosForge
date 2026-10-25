@@ -12,13 +12,13 @@ headers = {'Authorization': 'Bearer ' + (base/'token').read_text().strip(), 'Con
 checks = [
     ('get', 'apps', 'deployments', '', 'cartservice', True),
     ('patch', 'apps', 'deployments', 'scale', 'cartservice', True),
-    ('patch', 'apps', 'deployments', 'scale', 'frontend', False),
-    ('patch', 'apps', 'deployments', 'scale', 'redis-cart', False),
+    ('patch', 'apps', 'deployments', 'scale', 'frontend', True),
+    ('patch', 'apps', 'deployments', 'scale', 'redis-cart', True),
     ('list', '', 'secrets', '', '', False),
     ('create', '', 'pods', 'exec', '', False),
     ('delete', '', 'pods', '', '', False),
 ]
-for service in ('paymentservice', 'productcatalogservice', 'shippingservice', 'currencyservice', 'recommendationservice'):
+for service in ('frontend', 'redis-cart', 'checkoutservice', 'emailservice', 'adservice', 'loadgenerator', 'paymentservice', 'productcatalogservice', 'shippingservice', 'currencyservice', 'recommendationservice'):
     checks.extend([('get', 'apps', 'deployments', '', service, True), ('patch', 'apps', 'deployments', 'scale', service, True)])
 checks.append(('list', 'autoscaling', 'horizontalpodautoscalers', '', '', True))
 for verb, group, resource, subresource, name, expected in checks:

@@ -17,11 +17,11 @@ metadata:
 rules:
   - apiGroups: [apps]
     resources: [deployments, deployments/scale]
-    resourceNames: [cartservice, paymentservice, productcatalogservice, shippingservice, currencyservice, recommendationservice]
+    resourceNames: [cartservice, paymentservice, productcatalogservice, shippingservice, currencyservice, recommendationservice, frontend, redis-cart, checkoutservice, emailservice, adservice, loadgenerator]
     verbs: [get]
   - apiGroups: [apps]
     resources: [deployments/scale]
-    resourceNames: [cartservice, paymentservice, productcatalogservice, shippingservice, currencyservice, recommendationservice]
+    resourceNames: [cartservice, paymentservice, productcatalogservice, shippingservice, currencyservice, recommendationservice, frontend, redis-cart, checkoutservice, emailservice, adservice, loadgenerator]
     verbs: [patch]
   - apiGroups: [autoscaling]
     resources: [horizontalpodautoscalers]
