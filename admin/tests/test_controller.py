@@ -168,6 +168,3 @@ class ControllerTests(unittest.TestCase):
         k = Kubernetes.__new__(Kubernetes)
         for name in SERVICES:
             self.assertIn(name, k.path(name))
-        manifest = __import__('pathlib').Path(__file__).parents[1] / 'k8s/admin.yaml'
-        for name in SERVICES:
-            self.assertIn(name, manifest.read_text())

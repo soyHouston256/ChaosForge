@@ -13,6 +13,15 @@ IMAGE = 'us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin@sha256
 
 @unittest.skipUnless((ROOT/'scripts/deploy-admin.sh').exists(), 'Repository deployment scripts are not part of the runtime image')
 class PipelineTests(unittest.TestCase):
+    def test_manifest_targets_match_runtime_allowlist(self):
+        import re
+        from controller import SERVICES
+        manifest = (ROOT / 'admin/k8s/admin.yaml').read_text()
+        lists = re.findall(r'resourceNames:\s*\[([^]]+)\]', manifest)
+        self.assertEqual(len(lists), 2)
+        for names in lists:
+            self.assertEqual({name.strip() for name in names.split(',')}, set(SERVICES))
+
     def run_fake(self, mode):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory)
