@@ -16,7 +16,7 @@ for attempt in {1..30}; do
   if ! kill -0 "$PF_PID" 2>/dev/null; then cat "$WORK/port-forward.log"; exit 1; fi
   sleep 1
 done
-python3 - "$WORK/state.json" <<'PY'
+python3 - "$WORK/state.json" "$ROOT/admin" "${1:-}" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f:
     state = json.load(f)
@@ -24,8 +24,15 @@ if state['active'] is not None:
     raise SystemExit('Administrator has a pending experiment. Finish it before deploying; no automatic restoration was requested.')
 if state['mode'] != 'GKE · datos reales':
     raise SystemExit('Expected the real Kubernetes backend')
-if len(state['services']) != 6 or any(s.get('error') or s.get('uid','').startswith('demo-') or not s.get('uid') for s in state['services']):
-    raise SystemExit('Cannot read all six authorized Deployments')
+sys.path.insert(0, sys.argv[2])
+from controller import SERVICES
+actual = {s['name'] for s in state['services']}
+expected = set(SERVICES)
+legacy = {'cartservice', 'paymentservice', 'productcatalogservice', 'shippingservice', 'currencyservice', 'recommendationservice'}
+# Pre-deployment checks may inspect the previous six-target release.
+valid_targets = actual == expected or (sys.argv[3] == '--idle-only' and actual == legacy)
+if not valid_targets or len(actual) != len(state['services']) or any(s.get('error') or s.get('uid','').startswith('demo-') or not s.get('uid') for s in state['services']):
+    raise SystemExit('Cannot read the expected authorized Deployments')
 print('Real service reads OK; no active experiment. No secrets or CSRF token printed.')
 PY
 if [[ "${1:-}" == '--idle-only' ]]; then exit 0; fi
