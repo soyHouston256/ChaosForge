@@ -82,6 +82,13 @@ spec:
       containers:
         - name: admin
           image: CHAOSFORGE_ADMIN_IMAGE
+          env:
+            - name: CHAOSFORGE_FAULTS
+              valueFrom:
+                configMapKeyRef:
+                  name: chaosforge-experiments
+                  key: mechanisms
+                  optional: true
           ports:
             - containerPort: 8080
           securityContext:

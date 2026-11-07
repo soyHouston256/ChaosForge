@@ -8,7 +8,7 @@ import secrets
 import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 from backend import Demo, Kubernetes
 from controller import Controller, SERVICES, Rejected
 
@@ -54,6 +54,10 @@ def make_handler(controller):
                         'logs': 'No disponible: Cloud Logging no conectado a este panel.',
                         'metrics': 'No disponible: Cloud Monitoring no conectado a este panel.',
                         'traces': 'No disponible: Cloud Trace no conectado a este panel.'})
+                    data['mechanisms'] = [dict(mechanism='scale_zero', id='CF-000', label='Escalado a cero',
+                        targets=list(SERVICES), durations=[30, 60, 120], defaults={}, enabled=True,
+                        reason='Mecanismo de referencia; conserva las réplicas originales.')] + controller.backend.faults.catalog()
+                    data['operational'] = controller.operational_evidence(controller.clock() - 60, controller.clock() + .001)['observations'][-5:]
                     for name, (label, description, icon) in SERVICES.items():
                         item = dict(name=name, label=label, description=description, icon=icon)
                         try:
@@ -62,6 +66,15 @@ def make_handler(controller):
                             item['error'] = str(exc)
                         data['services'].append(item)
                     return self.send(200, data)
+                if path == '/api/observations':
+                    query = parse_qs(urlsplit(self.path).query)
+                    if set(query) != {'start', 'end'} or any(len(v) != 1 for v in query.values()):
+                        raise Rejected('Se requieren start y end únicos.')
+                    try:
+                        start, end = float(query['start'][0]), float(query['end'][0])
+                    except ValueError:
+                        raise Rejected('Timestamps inválidos.') from None
+                    return self.send(200, controller.operational_evidence(start, end))
                 if path.startswith('/api/evidence/'):
                     return self.send(200, controller.evidence(path.rsplit('/', 1)[1]))
                 files = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
@@ -86,8 +99,8 @@ def make_handler(controller):
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict):
                     raise Rejected('Objeto JSON requerido.')
-                if self.path == '/api/start' and set(body) == {'service', 'duration'}:
-                    ident = controller.start(body['service'], body['duration'])
+                if self.path == '/api/start' and {'service', 'duration'} <= set(body) <= {'service', 'duration', 'mechanism', 'parameters'}:
+                    ident = controller.start(body['service'], body['duration'], body.get('mechanism', 'scale_zero'), body.get('parameters'))
                 elif self.path == '/api/restore' and body == {}:
                     ident = controller.restore()
                 else:
@@ -126,6 +139,17 @@ def main():
 
     worker = threading.Thread(target=reconcile, daemon=True)
     worker.start()
+    def observe():
+        while not stopped.is_set():
+            if controller.backend.faults.enabled:
+                try:
+                    controller.observe()
+                except Exception:
+                    pass  # Missing coverage is visible; never manufacture a successful sample.
+            stopped.wait(3)
+
+    observer = threading.Thread(target=observe, daemon=True)
+    observer.start()
     server = ThreadingHTTPServer((args.bind, args.port), make_handler(controller))
     server.daemon_threads = True
 
@@ -142,6 +166,7 @@ def main():
     finally:
         stopped.set()
         worker.join(timeout=15)
+        observer.join(timeout=15)
         server.server_close()
         # PVC retains the deadline/original replicas if this process is killed.
 

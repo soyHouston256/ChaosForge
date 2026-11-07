@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY controller.py backend.py server.py ./
+COPY controller.py backend.py server.py faults.py observations.py experiments.py ./
 COPY static ./static
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 10001:10001

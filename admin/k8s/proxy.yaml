@@ -1,0 +1,118 @@
+# Render with render_proxy.py and an immutable digest before any application.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaosforge-proxy
+  namespace: boutique
+data:
+  proxies.json: |
+    [{"name":"cart-redis","listen":"0.0.0.0:6379","upstream":"redis-cart:6379","enabled":true}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaosforge-proxy
+  namespace: boutique
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: chaosforge-proxy
+  template:
+    metadata:
+      labels:
+        app: chaosforge-proxy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          image: TOXIPROXY_IMAGE
+          args: ['-host=0.0.0.0', '-config=/config/proxies.json']
+          ports:
+            - containerPort: 6379
+            - containerPort: 8474
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 100Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+              ephemeral-storage: 100Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+          livenessProbe:
+            httpGet:
+              path: /version
+              port: 8474
+      volumes:
+        - name: config
+          configMap:
+            name: chaosforge-proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaosforge-proxy
+  namespace: boutique
+spec:
+  type: ClusterIP
+  selector:
+    app: chaosforge-proxy
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+    - name: control
+      port: 8474
+      targetPort: 8474
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chaosforge-proxy
+  namespace: boutique
+spec:
+  podSelector:
+    matchLabels:
+      app: chaosforge-proxy
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cartservice
+      ports:
+        - protocol: TCP
+          port: 6379
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: chaosforge-system
+          podSelector:
+            matchLabels:
+              app: chaosforge-admin
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 8474
