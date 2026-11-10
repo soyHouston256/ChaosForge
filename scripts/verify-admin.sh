@@ -9,10 +9,27 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
-kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 18080:8080 > "$WORK/port-forward.log" 2>&1 &
+# Ground truth (/api/state) lives on the Service port named "admin" (8081); the
+# "observer" port (8080) only serves /healthz and /api/observations.
+ADMIN_PORT="$(kubectl -n chaosforge-system get service chaosforge-admin -o 'jsonpath={.spec.ports[?(@.name=="admin")].port}')"
+FORWARD=()
+if [[ -z "$ADMIN_PORT" ]]; then
+  if [[ "${1:-}" != '--idle-only' ]]; then
+    echo 'Service chaosforge-admin lacks the named "admin" port; the observer and admin ports must be separate.' >&2
+    exit 1
+  fi
+  # Pre-deployment check against the previous single-port release.
+  FORWARD=(18081:8080)
+elif [[ "$ADMIN_PORT" =~ ^[0-9]+$ ]]; then
+  FORWARD=(18080:8080 "18081:$ADMIN_PORT")
+else
+  echo 'Unexpected admin port in Service chaosforge-admin.' >&2
+  exit 1
+fi
+kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin "${FORWARD[@]}" > "$WORK/port-forward.log" 2>&1 &
 PF_PID=$!
 for attempt in {1..30}; do
-  if curl --fail --silent --max-time 30 http://127.0.0.1:18080/api/state > "$WORK/state.json"; then break; fi
+  if curl --fail --silent --max-time 30 http://127.0.0.1:18081/api/state > "$WORK/state.json"; then break; fi
   if ! kill -0 "$PF_PID" 2>/dev/null; then cat "$WORK/port-forward.log"; exit 1; fi
   sleep 1
 done
@@ -36,6 +53,16 @@ if not valid_targets or len(actual) != len(state['services']) or any(s.get('erro
 print('Real service reads OK; no active experiment. No secrets or CSRF token printed.')
 PY
 if [[ "${1:-}" == '--idle-only' ]]; then exit 0; fi
+# Observer isolation: ground-truth routes must not exist on the port Tider reads.
+curl --fail --silent --max-time 10 http://127.0.0.1:18080/healthz > /dev/null
+for route in /api/state /api/evidence/probe /; do
+  code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:18080$route")"
+  if [[ "$code" != 404 ]]; then
+    echo "Observer port must answer 404 on $route (got $code)." >&2
+    exit 1
+  fi
+done
+echo 'Observer port exposes only /healthz and /api/observations'
 kubectl -n chaosforge-system get service chaosforge-admin -o json > "$WORK/service.json"
 kubectl -n chaosforge-system get pvc chaosforge-state -o json > "$WORK/pvc.json"
 kubectl -n chaosforge-system get networkpolicy private-admin -o json > "$WORK/networkpolicy.json"

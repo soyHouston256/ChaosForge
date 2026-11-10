@@ -164,5 +164,5 @@ jobs:
             echo "Image: $IMAGE_REF"
             echo 'Namespace: chaosforge-system; access: private port-forward.'
             echo 'Read-only checks passed. No fault injection was performed.'
-            echo 'Open locally: kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8092:8080'
+            echo 'Open locally: kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8093:8081 8092:8080 (panel http://127.0.0.1:8093; Tider observer http://127.0.0.1:8092)'
           } >> "$GITHUB_STEP_SUMMARY"
