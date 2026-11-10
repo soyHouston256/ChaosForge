@@ -7,10 +7,10 @@ Aplicación separada de Online Boutique y de Tider. Python 3.9+ y biblioteca est
 Desde la raíz de ChaosForge:
 
 ```bash
-python3 admin/server.py --demo --port 8091 --data /tmp/chaosforge-admin-demo
+python3 admin/server.py --demo --port 8090 --admin-port 8091 --data /tmp/chaosforge-admin-demo
 ```
 
-Abrir http://localhost:8091. La banda **DEMO LOCAL · datos simulados** es permanente en este modo: los botones solo alteran un backend en memoria; no acceden a GCP. El historial y los plazos sí usan SQLite real. No usar el mismo directorio de datos para una demo y un despliegue real.
+Abrir http://localhost:8091 (administración). El puerto `--port` (8090 aquí, 8080 por defecto) es el observador: solo responde `/healthz` y `/api/observations`; cualquier otra ruta, incluidos `/api/state`, `/api/evidence/<id>` y los POST, responde 404. La banda **DEMO LOCAL · datos simulados** es permanente en este modo: los botones solo alteran un backend en memoria; no acceden a GCP. El historial y los plazos sí usan SQLite real. No usar el mismo directorio de datos para una demo y un despliegue real.
 
 ```bash
 python3 -m unittest discover -s admin/tests -v
@@ -60,6 +60,6 @@ Con el administrador desplegado, ejecutar desde cualquier carpeta:
 /Users/maxhoustonramirezmartel/code/utec/5/integrador/project/code/chaosforge/scripts/abrir-panel.sh
 ```
 
-Esperar `Forwarding from`, abrir http://127.0.0.1:8092 y mantener la terminal abierta. Ctrl+C cierra el túnel. Este comando usa la sesión gcloud existente y un kubeconfig temporal; no despliega ni modifica servicios. La demo local continúa siendo un modo distinto, marcado explícitamente como simulación.
+Esperar `Forwarding from` (una línea por puerto), abrir el panel en http://127.0.0.1:8093 y mantener la terminal abierta. Un único `kubectl port-forward` lleva `8093:8081` (administración) y `8092:8080` (observador); Tider se configura solo con `AGENT_OBSERVER_URL=http://127.0.0.1:8092`. Ctrl+C cierra ambos túneles. Este comando usa la sesión gcloud existente y un kubeconfig temporal; no despliega ni modifica servicios. La demo local continúa siendo un modo distinto, marcado explícitamente como simulación.
 
-El lanzador cuenta con cinco pruebas locales usando comandos simulados; verifican guardas, dirección loopback y limpieza del kubeconfig. La comprobación del puerto ocurre antes de abrir el túnel: si otro proceso ocupa el puerto después, kubectl informa el fallo y se limpia el archivo temporal.
+El lanzador cuenta con seis pruebas locales usando comandos simulados; verifican guardas, dirección loopback, los dos puertos y limpieza del kubeconfig. La comprobación de 8093 y 8092 ocurre antes de abrir el túnel: si otro proceso ocupa el puerto después, kubectl informa el fallo y se limpia el archivo temporal.

@@ -13,10 +13,23 @@ from backend import Demo, Kubernetes
 from controller import Controller, SERVICES, Rejected
 
 STATIC = Path(__file__).parent / 'static'
+# Observer port: the only surface configured in Tider (AGENT_OBSERVER_URL). It
+# exposes neutral operational samples and nothing that names an experiment.
+OBSERVER_ROUTES = frozenset({'/healthz', '/api/observations'})
+ROLES = ('admin', 'observer')
 
 
-def make_handler(controller):
-    csrf = secrets.token_urlsafe(32)
+def make_handler(controller, role='admin'):
+    """Build a handler for one port.
+
+    role='admin': panel, /api/state, /api/evidence/<id>, /api/observations and the
+    CSRF-protected POSTs. role='observer': only /healthz and /api/observations;
+    every other route (GET or POST) answers 404 without revealing it exists.
+    """
+    if role not in ROLES:
+        raise ValueError('Rol de puerto desconocido: %r' % (role,))
+    observer = role == 'observer'
+    csrf = None if observer else secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -45,6 +58,8 @@ def make_handler(controller):
             path = urlsplit(self.path).path
             if path == '/healthz':
                 return self.send(200, {'ok': True})
+            if observer and path not in OBSERVER_ROUTES:
+                return self.send(404, {'error': 'Ruta desconocida.'})
             if not self.local_host():
                 return self.send(403, {'error': 'Acceso solo por localhost / port-forward.'})
             try:
@@ -88,6 +103,8 @@ def make_handler(controller):
                 return self.send(503, {'error': 'No fue posible leer el estado persistente.'})
 
         def do_POST(self):
+            if observer:
+                return self.send(404, {'error': 'Ruta desconocida.'})
             origin = self.headers.get('Origin')
             expected = 'http://' + self.headers.get('Host', '')
             if not self.local_host() or self.headers.get('X-ChaosForge-Token') != csrf or (origin is not None and origin != expected):
@@ -117,9 +134,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--demo', action='store_true', help='Simulación local explícita; no accede a Kubernetes.')
     parser.add_argument('--bind', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=8080)
+    parser.add_argument('--port', type=int, default=8080,
+                        help='Puerto del observador (solo /healthz y /api/observations); el que lee Tider.')
+    parser.add_argument('--admin-port', type=int, default=8081,
+                        help='Puerto de administración (panel, /api/state, /api/evidence y POST).')
     parser.add_argument('--data', default='./data')
     args = parser.parse_args()
+    if args.port == args.admin_port:
+        parser.error('--port y --admin-port deben ser distintos: el observador no comparte puerto con la administración.')
     os.makedirs(args.data, exist_ok=True)
     lock_file = open(os.path.join(args.data, 'controller.lock'), 'a')
     try:
@@ -150,24 +172,33 @@ def main():
 
     observer = threading.Thread(target=observe, daemon=True)
     observer.start()
-    server = ThreadingHTTPServer((args.bind, args.port), make_handler(controller))
-    server.daemon_threads = True
+    servers = {}
+    for role, port in (('observer', args.port), ('admin', args.admin_port)):
+        servers[role] = ThreadingHTTPServer((args.bind, port), make_handler(controller, role))
+        servers[role].daemon_threads = True
 
     def stop(*_):
         # Persist a recovery request on graceful shutdown; crash recovery also handles SIGKILL.
         controller.restore()
-        threading.Thread(target=server.shutdown, daemon=True).start()
+        for server in servers.values():
+            threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    print('ChaosForge: http://localhost:%s — %s' % (args.port, controller.backend.mode), flush=True)
+    admin_thread = threading.Thread(target=servers['admin'].serve_forever, daemon=True)
+    admin_thread.start()
+    print('ChaosForge: observador http://localhost:%s · administración http://localhost:%s — %s'
+          % (args.port, args.admin_port, controller.backend.mode), flush=True)
     try:
-        server.serve_forever()
+        servers['observer'].serve_forever()
     finally:
         stopped.set()
+        servers['admin'].shutdown()  # No-op if stop() already requested it.
+        admin_thread.join(timeout=15)
         worker.join(timeout=15)
         observer.join(timeout=15)
-        server.server_close()
+        for server in servers.values():
+            server.server_close()
         # PVC retains the deadline/original replicas if this process is killed.
 
 

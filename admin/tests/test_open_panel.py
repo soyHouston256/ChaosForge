@@ -22,8 +22,9 @@ class OpenPanelTests(unittest.TestCase):
             log = root/'calls'
             code = '''import json, os, pathlib, sys
 name = pathlib.Path(sys.argv[0]).name
+stdin = sys.stdin.read() if name=='python3' else ''
 with open(os.environ['MOCK_LOG'], 'a') as f:
-    f.write(json.dumps({'tool':name,'args':sys.argv[1:],'config':os.environ.get('KUBECONFIG')})+'\\n')
+    f.write(json.dumps({'tool':name,'args':sys.argv[1:],'config':os.environ.get('KUBECONFIG'),'stdin':stdin})+'\\n')
 mode = os.environ['MOCK_MODE']
 if name=='gcloud':
     if sys.argv[1:3]==['auth','list']:
@@ -32,6 +33,7 @@ if name=='gcloud':
     else: pathlib.Path(os.environ['KUBECONFIG']).write_text('temporary')
 if name=='python3' and mode=='occupied': sys.exit(1)
 if name=='kubectl':
+    print('Forwarding from 127.0.0.1:8093 -> 8081')
     print('Forwarding from 127.0.0.1:8092 -> 8080')
     if mode=='tunnel-failure': sys.exit(7)
 '''
@@ -52,8 +54,18 @@ if name=='kubectl':
         result,calls=self.run_mock('success')
         self.assertEqual(result.returncode,0,result.stderr)
         tunnel=next(c for c in calls if c['tool']=='kubectl')
-        self.assertEqual(tunnel['args'],['-n','chaosforge-system','port-forward','--address','127.0.0.1','service/chaosforge-admin','8092:8080'])
+        # Panel/ground truth on 8093 (Service port admin=8081); Tider's observer on 8092 (observer=8080).
+        self.assertEqual(tunnel['args'],['-n','chaosforge-system','port-forward','--address','127.0.0.1','service/chaosforge-admin','8093:8081','8092:8080'])
         self.assertIn('chaosforge-panel.',tunnel['config'])
+        self.assertIn('http://127.0.0.1:8093',result.stdout)
+        self.assertIn('AGENT_OBSERVER_URL=http://127.0.0.1:8092',result.stdout)
+
+    def test_both_local_ports_are_checked_before_cluster_access(self):
+        _,calls=self.run_mock('success')
+        check=next(c for c in calls if c['tool']=='python3')
+        self.assertIn('(8093, 8092)',check['stdin'])
+        self.assertIn("sock.bind(('127.0.0.1', port))",check['stdin'])
+        self.assertLess(calls.index(check),next(i for i,c in enumerate(calls) if 'get-credentials' in c['args']))
 
     def test_no_login_blocks_cluster_access(self):
         result,calls=self.run_mock('no-auth')

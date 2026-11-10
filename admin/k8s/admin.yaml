@@ -89,8 +89,13 @@ spec:
                   name: chaosforge-experiments
                   key: mechanisms
                   optional: true
+          # observer (8080): only /healthz and /api/observations, the surface Tider reads.
+          # admin (8081): panel, /api/state, /api/evidence and POSTs (ground truth).
           ports:
-            - containerPort: 8080
+            - name: observer
+              containerPort: 8080
+            - name: admin
+              containerPort: 8081
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -111,12 +116,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: observer
             initialDelaySeconds: 3
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: observer
             initialDelaySeconds: 10
             timeoutSeconds: 3
       volumes:
@@ -134,8 +139,12 @@ spec:
   selector:
     app: chaosforge-admin
   ports:
-    - port: 8080
-      targetPort: 8080
+    - name: observer
+      port: 8080
+      targetPort: observer
+    - name: admin
+      port: 8081
+      targetPort: admin
 ---
 # No network ingress. kubectl port-forward uses the authenticated API/kubelet tunnel.
 apiVersion: networking.k8s.io/v1

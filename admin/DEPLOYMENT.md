@@ -85,7 +85,7 @@ Durante el despliegue, no iniciar experimentos desde otra sesión. La comprobaci
    /Users/maxhoustonramirezmartel/code/utec/5/integrador/project/code/chaosforge/scripts/abrir-panel.sh
    ```
 
-   Esperar `Forwarding from` y visitar http://127.0.0.1:8092. Mantener la terminal abierta; **Ctrl+C** cierra el túnel y elimina su kubeconfig temporal, sin cambiar el habitual. Usa la sesión gcloud existente; si falta login o el plugin GKE, muestra la instrucción correspondiente. Si el puerto está ocupado, informa el error sin detener procesos ajenos. El script no despliega ni inyecta fallos y no abre el panel públicamente.
+   Esperar `Forwarding from` y visitar el panel en http://127.0.0.1:8093 (puerto `admin` del Service, 8081). El mismo túnel publica el puerto `observer` (8080) en http://127.0.0.1:8092, que es lo único que se configura en Tider. Mantener la terminal abierta; **Ctrl+C** cierra los túneles y elimina su kubeconfig temporal, sin cambiar el habitual. Usa la sesión gcloud existente; si falta login o el plugin GKE, muestra la instrucción correspondiente. Si 8093 u 8092 está ocupado, informa el error sin detener procesos ajenos. El script no despliega ni inyecta fallos y no abre el panel públicamente.
 
    El estado previo de esta guía corresponde a las últimas comprobaciones del asistente. Posteriormente el usuario informó pipeline verde y tarjetas reales mediante el túnel manual; esa comprobación del usuario no se volvió a consultar en GCP para crear este script.
 
@@ -95,4 +95,4 @@ Se validaron YAML con el parser local, sintaxis shell/JavaScript, renderizado po
 
 No se ejecutaron Docker, GitHub Actions, publicación, despliegue ni cambios IAM/GCP para validar esta integración. El parser YAML no sustituye el validador de Actions y la comprobación local no garantiza admisión Autopilot o conectividad del runner. La ruta real será comprobada en la ejecución que dispare el usuario.
 
-El script de apertura añade 5 pruebas locales con mocks: sesión ausente, plugin ausente, puerto ocupado, túnel privado y limpieza incluso ante fallo. No llaman a GCP. Estas pruebas también se omiten dentro de la imagen, donde no se empaquetan los scripts de operación.
+El script de apertura añade 6 pruebas locales con mocks: sesión ausente, plugin ausente, puerto ocupado, comprobación de ambos puertos, túnel privado y limpieza incluso ante fallo. `verify-admin.sh` lee `/api/state` por el puerto `admin` y, tras desplegar, exige 404 en `/api/state`, `/api/evidence/<id>` y `/` del puerto `observer`; la comprobación previa (`--idle-only`) acepta todavía la versión anterior de un solo puerto. No llaman a GCP. Estas pruebas también se omiten dentro de la imagen, donde no se empaquetan los scripts de operación.

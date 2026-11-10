@@ -23,15 +23,17 @@ if ! gcloud auth print-access-token >/dev/null 2>/dev/null; then
   echo 'La sesión gcloud no pudo renovarse. Revisa tu conexión y ejecuta: gcloud auth login' >&2
   exit 1
 fi
+# 8093 = administración (panel y ground truth); 8092 = observador (lo único que lee Tider).
 python3 - <<'PY'
 import socket
 import sys
-with socket.socket() as sock:
-    try:
-        sock.bind(('127.0.0.1', 8092))
-    except OSError:
-        print('No se puede usar 127.0.0.1:8092. Si ya tienes un túnel abierto, usa http://127.0.0.1:8092 o ciérralo con Ctrl+C antes de reintentar. No se detuvo ningún proceso.', file=sys.stderr)
-        sys.exit(1)
+for port in (8093, 8092):
+    with socket.socket() as sock:
+        try:
+            sock.bind(('127.0.0.1', port))
+        except OSError:
+            print('No se puede usar 127.0.0.1:%d. Si ya tienes un túnel abierto, usa el panel en http://127.0.0.1:8093 o ciérralo con Ctrl+C antes de reintentar. No se detuvo ningún proceso.' % port, file=sys.stderr)
+            sys.exit(1)
 PY
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/chaosforge-panel.XXXXXX")"
@@ -44,8 +46,10 @@ if ! gcloud container clusters get-credentials chaosforge-lab --project=tider-op
   echo 'No se pudo acceder al clúster. Revisa la sesión, permisos y conectividad; no se cambió tu kubeconfig habitual.' >&2
   exit 1
 fi
-printf '\nPanel: http://127.0.0.1:8092\n'
-printf 'Espera a que aparezca "Forwarding from" y abre la URL. Mantén esta terminal abierta.\n'
-printf 'Ctrl+C cierra el túnel y elimina el kubeconfig temporal.\n\n'
-# Sin exec: el shell conserva el trap de limpieza cuando termina kubectl.
-kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8092:8080
+printf '\nPanel (administración): http://127.0.0.1:8093\n'
+printf 'Observador para Tider:  AGENT_OBSERVER_URL=http://127.0.0.1:8092 (solo /healthz y /api/observations)\n'
+printf 'Espera a que aparezca "Forwarding from" para ambos puertos y abre el panel. Mantén esta terminal abierta.\n'
+printf 'Ctrl+C cierra ambos túneles y elimina el kubeconfig temporal.\n\n'
+# Un solo port-forward lleva los dos puertos del Service (admin 8081, observer 8080);
+# sin exec: el shell conserva el trap de limpieza cuando termina kubectl.
+kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8093:8081 8092:8080

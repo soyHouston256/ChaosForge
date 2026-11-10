@@ -17,7 +17,7 @@ CPU registra la configuración del generador de carga y comprueba que no cambie.
 ## Ejecución local
 
 ```sh
-python3 admin/server.py --demo --port 18092 --data /tmp/chaosforge-demo
+python3 admin/server.py --demo --port 18092 --admin-port 18093 --data /tmp/chaosforge-demo
 ```
 
 La simulación aparece identificada en el panel y en la evidencia. Esperar al menos tres muestras de línea base antes de iniciar. El caso CPU espera una ventana de métricas antes de acreditar efecto; la restauración también comprueba una ventana posterior. No abre conexiones a GCP. Las pruebas automatizadas avanzan un reloj simulado y cubren los estados sin esperar esos plazos reales.
@@ -40,7 +40,7 @@ SQLite migra a esquema 2 conservando experimentos anteriores. No hacer downgrade
 
 El observador captura operación, configuración permitida y CPU de forma independiente del estado del experimento. `/api/observations?start=TIMESTAMP&end=TIMESTAMP` expone solo esa proyección: máximo una hora, hasta 500 muestras, retención de 24 horas y cobertura explícita. No expone IDs de experimento, causa, snapshots de reversión o controles del proxy. Los registros administrativos conservan las observaciones usadas y la línea base como evidencia durable de cada ejecución.
 
-Tider puede leer la proyección mediante `AGENT_OBSERVER_URL=http://127.0.0.1:8092`, usando el túnel local existente. Su herramienta resume períodos y conserva configuración, tiempos y cobertura. Rechaza simulaciones como evidencia de incidentes GCP. La configuración actual de Kubernetes sigue marcada como actual, no histórica.
+El servidor sirve esa proyección en un puerto propio (`--port`, 8080 en el pod; 127.0.0.1:8092 por el túnel), que solo responde `/healthz` y `/api/observations`: `/api/state`, `/api/evidence/<id>`, el panel y los POST responden 404 allí y viven en el puerto de administración (`--admin-port`, 8081 en el pod; 127.0.0.1:8093 por el túnel). Tider lee la proyección mediante `AGENT_OBSERVER_URL=http://127.0.0.1:8092` y nunca recibe la URL de administración. Su herramienta resume períodos y conserva configuración, tiempos y cobertura. Rechaza simulaciones como evidencia de incidentes GCP. La configuración actual de Kubernetes sigue marcada como actual, no histórica.
 
 ## Estado al cierre
 
