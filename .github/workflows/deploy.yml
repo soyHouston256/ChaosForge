@@ -10,10 +10,11 @@ on:
           - verify-auth
           - deploy
           - deploy-admin
+          - destroy
         default: verify-auth
         required: true
       approval:
-        description: "Para deploy: CREAR. Para deploy-admin: ADMIN. verify-auth no requiere texto."
+        description: "Para deploy: CREAR. Para deploy-admin: ADMIN. Para destroy: DESTRUIR. verify-auth no requiere texto."
         type: string
         required: false
 
@@ -25,18 +26,39 @@ concurrency:
   group: chaosforge-gcp-lab
   cancel-in-progress: false
 
+# Nada de la cuenta está escrito aquí: scripts/bootstrap.sh publica estas
+# variables del repositorio (Settings -> Secrets and variables -> Actions -> Variables).
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  CLUSTER: chaosforge-lab
+  STATE_BUCKET: ${{ vars.GCP_STATE_BUCKET }}
+  TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+  CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+
 jobs:
   verify-auth:
     name: Verify GitHub OIDC authentication
     runs-on: ubuntu-latest
     steps:
+      - name: Check repository variables published by scripts/bootstrap.sh
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+        run: |
+          missing=0
+          for name in PROJECT_ID STATE_BUCKET WIF_PROVIDER DEPLOY_SA; do
+            if [[ -z "${!name}" ]]; then echo "::error::Falta la variable del repositorio para $name. Ejecuta scripts/bootstrap.sh."; missing=1; fi
+          done
+          exit "$missing"
+
       - name: Authenticate with Workload Identity Federation
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
-          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
-          project_id: tider-ops
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
           token_format: access_token
 
       - name: Confirm temporary credential was issued
@@ -56,9 +78,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      TF_VAR_project_id: tider-ops
-      CLOUDSDK_CORE_PROJECT: tider-ops
     steps:
       - name: Checkout ChaosForge
         uses: actions/checkout@v4
@@ -69,9 +88,9 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
-          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
-          project_id: tider-ops
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
 
       - name: Set up gcloud (including GKE auth plugin)
         uses: google-github-actions/setup-gcloud@v2
@@ -83,7 +102,7 @@ jobs:
 
       - name: Terraform init and validate
         run: |
-          terraform -chdir=infrastructure/terraform init -input=false
+          terraform -chdir=infrastructure/terraform init -input=false -backend-config="bucket=$STATE_BUCKET"
           terraform -chdir=infrastructure/terraform validate
 
       - name: Terraform plan
@@ -94,8 +113,8 @@ jobs:
 
       - name: Connect to GKE
         run: |
-          gcloud container clusters get-credentials chaosforge-lab \
-            --region=us-central1 --project=tider-ops
+          gcloud container clusters get-credentials "$CLUSTER" \
+            --region="$REGION" --project="$PROJECT_ID"
 
       - name: Deploy Online Boutique
         run: bash ./scripts/deploy-boutique.sh
@@ -114,8 +133,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      CLOUDSDK_CORE_PROJECT: tider-ops
-      IMAGE_REPOSITORY: us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin
+      IMAGE_REPOSITORY: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/chaosforge/chaosforge-admin
     steps:
       - uses: actions/checkout@v4
       - name: Required checks before publishing or deployment
@@ -131,15 +149,15 @@ jobs:
       - name: Authenticate through existing GitHub OIDC
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/684205465777/locations/global/workloadIdentityPools/chaosforge-pool/providers/github-provider
-          service_account: chaosforge-deployer@tider-ops.iam.gserviceaccount.com
-          project_id: tider-ops
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
       - uses: google-github-actions/setup-gcloud@v2
         with:
           install_components: gke-gcloud-auth-plugin
       - name: Connect and check existing administrator is idle
         run: |
-          gcloud container clusters get-credentials chaosforge-lab --region=us-central1 --project=tider-ops
+          gcloud container clusters get-credentials "$CLUSTER" --region="$REGION" --project="$PROJECT_ID"
           EXISTING_ADMIN="$(kubectl -n chaosforge-system get deployment chaosforge-admin -o name --ignore-not-found)"
           if [[ -n "$EXISTING_ADMIN" ]]; then
             bash scripts/verify-admin.sh --idle-only
@@ -148,7 +166,7 @@ jobs:
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
           docker push "$IMAGE_TAG"
-          IMAGE_DIGEST="$(gcloud artifacts docker images describe "$IMAGE_TAG" --project=tider-ops --format='value(image_summary.digest)')"
+          IMAGE_DIGEST="$(gcloud artifacts docker images describe "$IMAGE_TAG" --project="$PROJECT_ID" --format='value(image_summary.digest)')"
           IMAGE_REF="$IMAGE_REPOSITORY@$IMAGE_DIGEST"
           python admin/render_manifest.py "$IMAGE_REF" > "$RUNNER_TEMP/chaosforge-admin.yaml"
           echo "IMAGE_REF=$IMAGE_REF" >> "$GITHUB_ENV"
@@ -165,4 +183,47 @@ jobs:
             echo 'Namespace: chaosforge-system; access: private port-forward.'
             echo 'Read-only checks passed. No fault injection was performed.'
             echo 'Open locally: kubectl -n chaosforge-system port-forward --address 127.0.0.1 service/chaosforge-admin 8093:8081 8092:8080 (panel http://127.0.0.1:8093; Tider observer http://127.0.0.1:8092)'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  destroy:
+    name: Destroy lab infrastructure (stops charges)
+    needs: verify-auth
+    if: ${{ inputs.mode == 'destroy' && inputs.approval == 'DESTRUIR' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: gcp-lab
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+      - name: Remove workloads first so their load balancers do not block the VPC
+        run: |
+          if gcloud container clusters describe "$CLUSTER" --region="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            gcloud container clusters get-credentials "$CLUSTER" --region="$REGION" --project="$PROJECT_ID"
+            kubectl delete namespace boutique --ignore-not-found --wait --timeout=600s
+          else
+            echo 'Cluster not found; nothing to clean inside Kubernetes.'
+          fi
+      - name: Terraform destroy
+        run: |
+          terraform -chdir=infrastructure/terraform init -input=false -backend-config="bucket=$STATE_BUCKET"
+          terraform -chdir=infrastructure/terraform destroy -input=false -auto-approve
+      - name: Summary
+        run: |
+          {
+            echo '### ChaosForge lab destroyed'
+            echo 'Cluster, subnet and VPC removed. The state bucket, the image repository and the'
+            echo 'deployment identity remain (created by scripts/bootstrap.sh); they cost close to nothing.'
+            echo 'The administrator history (PVC) was deleted with the cluster.'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -4,6 +4,8 @@ No experiment IDs, mechanisms, actor labels, or rollback snapshots are exported.
 """
 import json
 import math
+import os
+import re
 import socket
 import time
 import urllib.parse
@@ -30,7 +32,11 @@ def cpu_sample(backend):
     pods = [p['pod'] for p in inventory]
     if not pods:
         return {'coverage': 'missing', 'reason': 'No hay pods identificados.'}
-    query_labels = {'project_id': 'tider-ops', 'cluster': 'chaosforge-lab', 'location': 'us-central1',
+    project = os.environ.get('CHAOSFORGE_PROJECT_ID', '')
+    if not re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', project):
+        return {'coverage': 'missing', 'reason': 'Falta CHAOSFORGE_PROJECT_ID.'}
+    query_labels = {'project_id': project, 'cluster': os.environ.get('CHAOSFORGE_CLUSTER', 'chaosforge-lab'),
+                    'location': os.environ.get('CHAOSFORGE_LOCATION', 'us-central1'),
                     'namespace': 'boutique', 'container': CONTAINER}
     selector = ','.join(k + '=' + json.dumps(v) for k, v in query_labels.items())
     selector += ',pod=~' + json.dumps('|'.join(pods))
@@ -47,7 +53,7 @@ def cpu_sample(backend):
     results = {}
     for key, query in queries.items():
         params = urllib.parse.urlencode({'query': query})
-        req = urllib.request.Request('https://monitoring.googleapis.com/v1/projects/tider-ops/location/global/prometheus/api/v1/query?' + params,
+        req = urllib.request.Request('https://monitoring.googleapis.com/v1/projects/' + project + '/location/global/prometheus/api/v1/query?' + params,
                                      headers={'Authorization': 'Bearer ' + token})
         with urllib.request.urlopen(req, timeout=3) as response:
             data = json.load(response)

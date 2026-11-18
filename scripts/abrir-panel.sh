@@ -42,7 +42,12 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 export KUBECONFIG="$WORK/kubeconfig"
-if ! gcloud container clusters get-credentials chaosforge-lab --project=tider-ops --region=us-central1; then
+PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
+  echo 'No hay proyecto activo. Ejecuta: gcloud config set project TU-PROYECTO (o exporta PROJECT_ID).' >&2
+  exit 1
+fi
+if ! gcloud container clusters get-credentials "${CLUSTER:-chaosforge-lab}" --project="$PROJECT_ID" --region="${REGION:-us-central1}"; then
   echo 'No se pudo acceder al clúster. Revisa la sesión, permisos y conectividad; no se cambió tu kubeconfig habitual.' >&2
   exit 1
 fi

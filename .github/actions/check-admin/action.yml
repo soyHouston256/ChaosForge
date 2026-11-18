@@ -23,9 +23,9 @@ runs:
       shell: bash
       run: |
         python admin/render_manifest.py \
-          us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          us-central1-docker.pkg.dev/example-project/chaosforge/chaosforge-admin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
           > "$RUNNER_TEMP/admin-render-check.yaml"
-        if python admin/render_manifest.py us-central1-docker.pkg.dev/tider-ops/chaosforge/chaosforge-admin:latest; then
+        if python admin/render_manifest.py us-central1-docker.pkg.dev/example-project/chaosforge/chaosforge-admin:latest; then
           echo 'Mutable image unexpectedly accepted' >&2
           exit 1
         fi

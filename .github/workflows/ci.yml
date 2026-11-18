@@ -17,8 +17,16 @@ jobs:
         run: |
           for f in scripts/*.sh; do bash -n "$f"; done
       - name: Terraform style
-        run: terraform -chdir=infrastructure/terraform fmt -check
+        run: terraform fmt -check -recursive infrastructure
       - name: Terraform validate (no backend, no cloud access)
         run: |
           terraform -chdir=infrastructure/terraform init -backend=false -input=false
           terraform -chdir=infrastructure/terraform validate
+          terraform -chdir=infrastructure/bootstrap init -backend=false -input=false
+          terraform -chdir=infrastructure/bootstrap validate
+      - name: No account-specific values in deployable code
+        run: |
+          if grep -rnE 'tider-ops|projects/[0-9]{6,}' .github scripts infrastructure admin --include='*.yml' --include='*.yaml' --include='*.sh' --include='*.tf' --include='*.py' --exclude-dir=tests --exclude=cloudbuild.yaml --exclude=ci.yml; then
+            echo 'Hardcoded project found; use variables instead.' >&2
+            exit 1
+          fi

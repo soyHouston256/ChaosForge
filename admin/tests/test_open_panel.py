@@ -30,6 +30,7 @@ if name=='gcloud':
     if sys.argv[1:3]==['auth','list']:
         if mode!='no-auth': print('test-account')
     elif sys.argv[1:3]==['auth','print-access-token']: print('SECRET_TEST_TOKEN')
+    elif sys.argv[1:3]==['config','get-value']: print('test-project')
     else: pathlib.Path(os.environ['KUBECONFIG']).write_text('temporary')
 if name=='python3' and mode=='occupied': sys.exit(1)
 if name=='kubectl':
@@ -57,6 +58,9 @@ if name=='kubectl':
         # Panel/ground truth on 8093 (Service port admin=8081); Tider's observer on 8092 (observer=8080).
         self.assertEqual(tunnel['args'],['-n','chaosforge-system','port-forward','--address','127.0.0.1','service/chaosforge-admin','8093:8081','8092:8080'])
         self.assertIn('chaosforge-panel.',tunnel['config'])
+        # The project comes from the active gcloud configuration, never from the code.
+        credentials=next(c for c in calls if 'get-credentials' in c['args'])
+        self.assertIn('--project=test-project',credentials['args'])
         self.assertIn('http://127.0.0.1:8093',result.stdout)
         self.assertIn('AGENT_OBSERVER_URL=http://127.0.0.1:8092',result.stdout)
 

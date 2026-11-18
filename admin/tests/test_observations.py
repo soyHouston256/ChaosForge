@@ -43,10 +43,20 @@ class CPUObservationTests(unittest.TestCase):
             value = str(now - 10) if 'timestamp(' in query else '.4'
             return io.BytesIO(json.dumps({'status': 'success', 'data': {'result': [
                 {'metric': {'pod': 'cartservice-real', 'container': 'server'}, 'value': [now, value]}]}}).encode())
-        with patch('observations.urllib.request.urlopen', urlopen):
+        with patch('observations.urllib.request.urlopen', urlopen), \
+                patch.dict('os.environ', {'CHAOSFORGE_PROJECT_ID': 'lab-project-1'}):
             result = cpu_sample(k)
         self.assertEqual(result['coverage'], 'complete')
+        self.assertTrue(all('project_id="lab-project-1"' in q for q in queries))
         self.assertEqual(result['series'][0]['ratio'], .4)
         self.assertEqual(result['series'][0]['effective_resources']['limits']['cpu'], '50m')
         self.assertTrue(all('namespace="boutique"' in q and 'pod=~"cartservice-real"' in q for q in queries))
         self.assertNotIn('test-token', json.dumps(result))
+
+    def test_metrics_are_missing_without_a_configured_project(self):
+        k = Kubernetes.__new__(Kubernetes)
+        k.pod_inventory = lambda _: [{'pod': 'cartservice-real', 'containers': []}]
+        def urlopen(req, timeout):
+            raise AssertionError('No request may be sent without a project')
+        with patch('observations.urllib.request.urlopen', urlopen), patch.dict('os.environ', {}, clear=True):
+            self.assertEqual(cpu_sample(k)['coverage'], 'missing')

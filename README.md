@@ -2,10 +2,7 @@
 
 **Propósito:** ambiente mock reproducible para generar **logs, métricas y trazas** mediante Online Boutique de Google y ejecutar inyecciones reversibles. **No incluye agentes TiderOps.**
 
-Proyecto GCP: `tider-ops`, región `us-central1`, clúster `chaosforge-lab` (GKE Autopilot), namespace `boutique`.
-La [bitácora del 17/10/2026](docs/GCP_SETUP.md) registra el despliegue observado de Online Boutique,
-el estado remoto GCS y la autenticación OIDC. Los pasos siguientes son procedimientos de instalación;
-no es necesario recrear el laboratorio para probar el agente.
+Región `us-central1`, clúster `chaosforge-lab` (GKE Autopilot), namespace `boutique`. **El proyecto de Google Cloud no está escrito en el código:** se toma de `PROJECT_ID` (o del proyecto activo de `gcloud`) y de las variables del repositorio en GitHub, de modo que el laboratorio se puede levantar en cualquier cuenta. Ver [Levantar el laboratorio en una cuenta nueva](docs/bootstrap.md).
 
 La consola del agente está en [../tider](../tider/README.md), con escenarios locales y conector Cloud Logging.
 
@@ -14,47 +11,47 @@ Ver [`docs/architecture.md`](docs/architecture.md). Fuente oficial de la app: ht
 
 Para revisar o desplegar el panel aprobado, empieza por [Administrador web](admin/README.md) y su [flujo oficial en GitHub Actions](admin/DEPLOYMENT.md). Los pasos de Cloud Shell siguientes corresponden al aprovisionamiento original del laboratorio, no son necesarios para desplegar solo el administrador.
 
-## Inicio desde Google Cloud Shell
+## Inicio en una cuenta nueva
 
 ```bash
-# Clonar TU repo luego de subir este contenido a GitHub
-# git clone https://github.com/soyHouston256/chaosforge.git
-cd chaosforge
-./scripts/check.sh
-./scripts/preflight.sh
+gcloud auth login && gcloud auth application-default login
+export PROJECT_ID=tu-proyecto            # proyecto vacío con facturación activa
 
-# Crear bucket persistente de Terraform state, UNA VEZ (puede generar pequeños costos)
-./scripts/bootstrap-state.sh
-export STATE_BUCKET=chaosforge-tfstate-TU_NUMERO_DE_PROYECTO
+# UNA VEZ: APIs, bucket de estado, repositorio de imágenes, identidad de despliegue,
+# federación OIDC con GitHub y presupuesto. Publica las variables en GitHub.
+BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX ./scripts/bootstrap.sh
+```
 
-# Revisar cuidadosamente qué se creará; NO aplica cambios
-./scripts/plan.sh
+Después, todo se hace desde **GitHub → Actions → ChaosForge - Auth check and deployment**:
 
-# CREA recursos facturables; pide confirmación explícita
-./scripts/apply.sh
+| Modo | Aprobación | Qué hace |
+|---|---|---|
+| `verify-auth` | — | Comprueba la federación OIDC. No crea nada. |
+| `deploy` | `CREAR` | Terraform (VPC, subred, GKE Autopilot) + Online Boutique. **Facturable.** |
+| `deploy-admin` | `ADMIN` | Construye, publica y despliega solo el administrador. |
+| `destroy` | `DESTRUIR` | Elimina cargas, clúster y red para detener los cobros. |
 
-# Descarga Online Boutique oficial y configura Cloud Operations
-./scripts/deploy-boutique.sh
-./scripts/validate.sh
+Los scripts locales siguen disponibles para operar a mano con la misma configuración:
 
-# Experimento v0 controlado: caída cartservice, NO Redis
-./scripts/chaos-cart.sh
-# Recuperación manual de emergencia si fuese necesaria
-./scripts/restore.sh
-
-# Destruir al finalizar, para evitar costos (bucket state permanece)
-./scripts/destroy.sh
+```bash
+./scripts/check.sh && ./scripts/preflight.sh
+./scripts/plan.sh          # no aplica cambios
+./scripts/apply.sh         # CREA recursos facturables; pide confirmación
+./scripts/deploy-boutique.sh && ./scripts/validate.sh
+./scripts/chaos-cart.sh    # experimento v0: caída de cartservice
+./scripts/restore.sh       # recuperación manual de emergencia
+./scripts/destroy.sh       # el bucket de estado permanece
 ```
 
 **Dependencias:** `git`, `terraform`, `gcloud`, `kubectl`, `python3`; autenticación gcloud activa y permisos necesarios. Ejecutar en Cloud Shell, no requiere claves JSON. La configuración de Cloud Operations se obtiene del repo oficial mediante Kustomize.
 
 ## Automatización GitHub Actions
 - `ci.yml`: validaciones sin acceso a GCP (push/PR).
-- `deploy.yml`: ejecución manual con OIDC. `deploy` + `CREAR` aplica infraestructura y Boutique; `deploy-admin` + `ADMIN` publica y despliega solo el administrador. Ambos despliegues requieren `main` y el entorno protegido `gcp-lab`. El proveedor OIDC, la cuenta y el proyecto están definidos en el workflow actual; no lee secretos llamados `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA` o `STATE_BUCKET`. Ver [CI/CD del administrador](admin/DEPLOYMENT.md) para los permisos pendientes.
-- Destrucción deliberadamente manual desde Cloud Shell hasta revisar los permisos y el estado remoto.
+- `deploy.yml`: ejecución manual con OIDC y cuatro modos (tabla anterior). Todos los que cambian algo requieren `main` y el entorno protegido `gcp-lab`. El proveedor OIDC, la cuenta de servicio, el proyecto y el bucket de estado se leen de las variables del repositorio `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PROJECT_ID` y `GCP_STATE_BUCKET`, que publica `scripts/bootstrap.sh`. No hay secretos ni claves JSON. Ver [CI/CD del administrador](admin/DEPLOYMENT.md).
+- La CI rechaza cualquier proyecto escrito a mano en el código desplegable.
 
 ## Alcance real
-- Terraform: GKE Autopilot, VPC, subred, APIs GCP. State remoto GCS inicializado con script de bootstrap.
+- Terraform: dos pilas. `infrastructure/bootstrap` (una vez, estado local): bucket de estado, Artifact Registry, identidad de despliegue, OIDC y presupuesto. `infrastructure/terraform` (estado remoto GCS): GKE Autopilot, VPC, subred y APIs.
 - App: demo oficial y variante Cloud Operations con Kustomize; servicios y LoadBalancer observados en GKE. La telemetría extremo a extremo se verifica por separado.
 - Chaos: primer fallo replicable de Cart Service; la recuperación automática depende de que el proceso script siga en ejecución (trap). No hay fault injection específica de Redis aún.
 - Evidencia: logs básicos y conectores de Cloud Operations de la demo. Exportación de datasets y dashboards académicos están pendientes.
