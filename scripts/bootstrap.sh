@@ -27,7 +27,11 @@ echo "Bootstrap de ChaosForge"
 echo "  Proyecto:    $PROJECT_ID"
 echo "  Región:      $REGION"
 echo "  Repositorio: $GITHUB_REPOSITORY"
-echo "  Presupuesto: ${BILLING_ACCOUNT:+cuenta $BILLING_ACCOUNT}${BILLING_ACCOUNT:-no se crea (define BILLING_ACCOUNT para crearlo)}"
+if [[ -n "${BILLING_ACCOUNT:-}" ]]; then
+  echo "  Presupuesto: cuenta $BILLING_ACCOUNT"
+else
+  echo "  Presupuesto: no se crea (define BILLING_ACCOUNT para crearlo)"
+fi
 
 VARS=(-var "project_id=$PROJECT_ID" -var "region=$REGION" -var "github_repository=$GITHUB_REPOSITORY"
   -var "billing_account=${BILLING_ACCOUNT:-}")
