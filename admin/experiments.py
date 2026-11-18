@@ -12,6 +12,15 @@ RECOVERY_SECONDS = 180
 STABLE_SECONDS = 10
 
 
+# How old the newest operational sample may be and still count as live telemetry
+# during an experiment. A sample is stamped when its capture starts and stored when
+# it ends; under a fault the capture itself slows down (the probed operation waits
+# on its dependency), so on GKE samples routinely arrive 8-20 s old. 15 s marked
+# real, observed effects as coverage_incomplete. 30 s is the look-back window used
+# below and still fails when a whole sample is missing.
+FRESH_SECONDS = 30
+
+
 def samples(controller, after, limit=200):
     rows = controller.db.execute('SELECT data FROM observations WHERE at>=? ORDER BY at DESC LIMIT ?', (after, limit)).fetchall()
     return [json.loads(r[0]) for r in reversed(rows)]
@@ -121,7 +130,7 @@ def tick(c, active):
                 c._event(ident, 'configuration_restored', {'message': 'Campos restaurados; falta verificar operación y revisión.'})
             active.update(state='verifying_recovery', restored=now, steady_since=None)
         observations = samples(c, max(active['started'], now - 30))
-        latest = observations[-1] if observations and observations[-1]['at'] >= now - 15 else None
+        latest = observations[-1] if observations and observations[-1]['at'] >= now - FRESH_SECONDS else None
         if latest and latest['at'] != plan.get('last_observation_at'):
             plan['last_observation_at'] = latest['at']
             with c.db:

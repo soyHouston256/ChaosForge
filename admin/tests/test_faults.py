@@ -82,6 +82,31 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(self.c.active())
         self.assertEqual(self.c.snapshot()['history'][0]['result'], 'write_uncertain')
 
+    def run_wrong_port_with_slow_samples(self, gap):
+        for _ in range(5):
+            self.sample()
+        self.c.start('cartservice', 120, 'wrong_port')
+        for _ in range(26):
+            self.sample()
+        active = self.c.active()
+        self.assertEqual(active['state'], 'effect_observed')
+        # Under the fault each capture is slow: the tick sees its newest sample `gap` seconds old.
+        while self.now < active['effect_at'] + 120:
+            self.c.observe()
+            self.now += gap
+            self.c.tick()
+        for _ in range(40):
+            self.sample()
+        self.assertIsNone(self.c.active())
+        return self.c.snapshot()['history'][0]['result']
+
+    def test_slow_samples_under_fault_still_credit_the_effect(self):
+        # Measured on GKE: samples arrive up to ~20 s old while the dependency times out.
+        self.assertEqual(self.run_wrong_port_with_slow_samples(20), 'effect_observed')
+
+    def test_a_missing_sample_is_still_incomplete_coverage(self):
+        self.assertEqual(self.run_wrong_port_with_slow_samples(35), 'coverage_incomplete')
+
     def test_no_effect_expires_even_with_missing_telemetry(self):
         self.c.start('cartservice', 120, 'latency')
         self.now += 181
