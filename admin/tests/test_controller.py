@@ -162,6 +162,35 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(Rejected):
             k.path('unknown-service')
 
+    def test_restore_from_zero_when_scale_omits_replicas(self):
+        # Kubernetes drops spec.replicas from the Scale subresource at zero.
+        k = Kubernetes.__new__(Kubernetes)
+        calls = []
+        def request(path, body=None):
+            calls.append((path, body))
+            return {'metadata': {'uid': 'same', 'resourceVersion': '9'}, 'spec': {}}
+        k.request = request
+        k.compare_scale('cartservice', 1, 'same', 0)
+        patch = calls[-1][1]
+        self.assertEqual(patch[-1], {'op': 'add', 'path': '/spec/replicas', 'value': 1})
+        self.assertIn({'op': 'test', 'path': '/metadata/resourceVersion', 'value': '9'}, patch)
+        self.assertFalse(any(op['path'] == '/spec/replicas' and op['op'] == 'test' for op in patch))
+        # A different actor already changed the scale: zero observed, one expected.
+        with self.assertRaises(Rejected):
+            k.compare_scale('cartservice', 0, 'same', 1)
+
+    def test_scale_keeps_replace_and_test_when_replicas_is_present(self):
+        k = Kubernetes.__new__(Kubernetes)
+        calls = []
+        def request(path, body=None):
+            calls.append((path, body))
+            return {'metadata': {'uid': 'same', 'resourceVersion': '9'}, 'spec': {'replicas': 1}}
+        k.request = request
+        k.compare_scale('cartservice', 0, 'same', 1)
+        patch = calls[-1][1]
+        self.assertIn({'op': 'test', 'path': '/spec/replicas', 'value': 1}, patch)
+        self.assertEqual(patch[-1], {'op': 'replace', 'path': '/spec/replicas', 'value': 0})
+
     def test_all_twelve_targets_are_allowlisted(self):
         from controller import SERVICES
         self.assertEqual(len(SERVICES), 12)
