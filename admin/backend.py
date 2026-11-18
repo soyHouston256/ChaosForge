@@ -84,15 +84,23 @@ class Kubernetes:
         current = self.request(path)
         if current['metadata']['uid'] != uid:
             raise Conflict('La identidad del Deployment cambió; restauración requiere revisión del operador.')
-        if expected is not None and current['spec']['replicas'] != expected:
+        # The Scale subresource omits spec.replicas when it is 0 (omitempty), so a
+        # Deployment scaled to zero may come back without the field at all.
+        spec = current.get('spec') or {}
+        present = 'replicas' in spec
+        if expected is not None and spec.get('replicas', 0) != expected:
             raise Conflict('Réplicas modificadas por otro actor; no se sobrescribirá su cambio.')
         patch = [
             {'op': 'test', 'path': '/metadata/uid', 'value': uid},
             {'op': 'test', 'path': '/metadata/resourceVersion', 'value': current['metadata']['resourceVersion']},
         ]
-        if expected is not None:
+        if expected is not None and present:
             patch.append({'op': 'test', 'path': '/spec/replicas', 'value': expected})
-        self.request(path, patch + [{'op': 'replace', 'path': '/spec/replicas', 'value': replicas}])
+        # Without the field a JSON Patch test/replace has no path to act on; the
+        # resourceVersion test above already rejects any change since the read.
+        if 'spec' not in current:
+            patch.append({'op': 'add', 'path': '/spec', 'value': {}})
+        self.request(path, patch + [{'op': 'replace' if present else 'add', 'path': '/spec/replicas', 'value': replicas}])
 
     def probe(self):
         results = []
