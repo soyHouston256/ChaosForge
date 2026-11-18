@@ -1,6 +1,6 @@
 variable "project_id" {
-  type    = string
-  default = "tider-ops"
+  type        = string
+  description = "ID del proyecto de Google Cloud. Sin valor por defecto: se pasa con TF_VAR_project_id."
 }
 
 variable "region" {

@@ -83,6 +83,9 @@ spec:
         - name: admin
           image: CHAOSFORGE_ADMIN_IMAGE
           env:
+            # Filled in by render_manifest.py from the image reference.
+            - name: CHAOSFORGE_PROJECT_ID
+              value: CHAOSFORGE_GCP_PROJECT
             - name: CHAOSFORGE_FAULTS
               valueFrom:
                 configMapKeyRef:

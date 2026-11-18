@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.6.0"
+  # El bucket se pasa en `terraform init -backend-config="bucket=..."`
+  # (scripts/common.sh y el workflow lo hacen); así el código no queda atado a una cuenta.
   backend "gcs" {
-    bucket = "tider-ops-chaosforge-tfstate"
     prefix = "chaosforge/lab"
   }
   required_providers {
