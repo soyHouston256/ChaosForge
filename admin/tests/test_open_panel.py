@@ -12,7 +12,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/abrir-panel.sh'
 
 @unittest.skipUnless(SCRIPT.exists(), 'Access script is not part of the runtime image')
 class OpenPanelTests(unittest.TestCase):
-    def run_mock(self, mode):
+    def run_mock(self, mode, extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root/'bin'
@@ -44,6 +44,10 @@ if name=='kubectl':
                 file.write_text('#!'+sys.executable+'\n'+code)
                 file.chmod(0o755)
             env = dict(os.environ, PATH=str(binary)+':/usr/bin:/bin', TMPDIR=str(root), KUBECONFIG=str(original), MOCK_LOG=str(log), MOCK_MODE=mode)
+            # The deployment workflow exports these; the script must be tested from a clean slate.
+            for name in ('PROJECT_ID', 'CLUSTER', 'REGION'):
+                env.pop(name, None)
+            env.update(extra_env or {})
             result = subprocess.run(['/bin/bash',str(SCRIPT)],cwd=root,env=env,capture_output=True,text=True,timeout=5)
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             self.assertEqual(original.read_text(),'untouched')
@@ -63,6 +67,12 @@ if name=='kubectl':
         self.assertIn('--project=test-project',credentials['args'])
         self.assertIn('http://127.0.0.1:8093',result.stdout)
         self.assertIn('AGENT_OBSERVER_URL=http://127.0.0.1:8092',result.stdout)
+
+    def test_explicit_project_cluster_and_region_override_gcloud_configuration(self):
+        result,calls=self.run_mock('success',{'PROJECT_ID':'other-project','CLUSTER':'other-lab','REGION':'europe-west1'})
+        self.assertEqual(result.returncode,0,result.stderr)
+        credentials=next(c for c in calls if 'get-credentials' in c['args'])
+        self.assertEqual(credentials['args'][2:],['get-credentials','other-lab','--project=other-project','--region=europe-west1'])
 
     def test_both_local_ports_are_checked_before_cluster_access(self):
         _,calls=self.run_mock('success')
